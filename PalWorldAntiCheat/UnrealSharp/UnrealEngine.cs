@@ -26,6 +26,7 @@ namespace UnrealSharp
         static nint GEnginePattern;
         public static nint GEngine;
         public static nint GStaticCtor;
+        public static nint ReceivedRPC;
         public static Memory Memory;
         //public static nint FStringCtor;
         //public static nint FTextCtor;
@@ -71,7 +72,9 @@ namespace UnrealSharp
                 var FTextCtor = FTextCtors[1];
                 FString = Marshal.GetDelegateForFunctionPointer<FStringFromStringDelegate>(FStringCtor);
                 FText = Marshal.GetDelegateForFunctionPointer<FTextFromFStringDelegate>(FTextCtor);
-
+            }
+            {
+                ReceivedRPC = Memory.FindPattern("48 8B 47 50 48 8D 4D 88 48 89 45 90 48 89 7D 88 44 89 65 98 66 C7 45");
             }
             //DumpSdk();
         }
@@ -1180,7 +1183,7 @@ namespace UnrealSharp
             }
         }
         public delegate nint _do(nint baseAddr, nint func, nint args);
-        public T Invoke<T>(String funcName, params object[] args)
+        public unsafe T Invoke<T>(String funcName, params object[] args)
         {
             var funcAddr = GetFuncAddr(ClassAddr, ClassAddr, funcName);
             var initFlags = UnrealEngine.Memory.ReadProcessMemory<nint>(funcAddr + funcFlagsOffset);
@@ -1188,11 +1191,17 @@ namespace UnrealSharp
             nativeFlag |= 0x400;
             UnrealEngine.Memory.WriteProcessMemory(funcAddr + funcFlagsOffset, BitConverter.GetBytes(nativeFlag));
             var doActor = Marshal.GetDelegateForFunctionPointer<_do>(VTableFunc);
-            var ptr = args.Length == 0 ? (nint)Marshal.AllocHGlobal(0x100) : (nint)args[0]; // todo fix parameter pointer
+            var ptr = args.Length == 0 ? (nint)Marshal.AllocHGlobal(0x1000) : (nint)args[0]; // todo fix parameter pointer
             var val = doActor(Address, funcAddr, ptr);
             UnrealEngine.Memory.WriteProcessMemory(funcAddr + funcFlagsOffset, BitConverter.GetBytes(initFlags));
             if (default(T) is bool) return (T)(object)((val & 1) == 1);
             else if (default(T) is char) return default(T);
+            else if (typeof(T).IsAssignableTo(typeof(UEObject)))
+            {
+                var obj = Activator.CreateInstance(typeof(T), val);
+                //obj._classAddr = _classAddr;
+                return (T)(object)obj;
+            }
             return default(T);
         }
         public void Invoke(String funcName, params object[] args)
