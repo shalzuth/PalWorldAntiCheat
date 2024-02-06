@@ -11,4 +11,8 @@
     <LangVersion>preview</LangVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Folder Include="MinHook\" />
+  </ItemGroup>
+
 </Project>

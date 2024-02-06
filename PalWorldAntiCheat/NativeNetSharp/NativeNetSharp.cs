@@ -311,7 +311,7 @@ namespace NativeNetSharp
             var codePtr = VirtualAllocEx(procHandle, ProxyCaller?.TargetAddress ?? IntPtr.Zero, asm.Count, 0x3000, 0x40);
             WriteProcessMemory(procHandle, ProxyCaller?.TargetAddress ?? codePtr, asm.ToArray(), asm.Count, out _);
             var thread = CreateRemoteThread(procHandle, IntPtr.Zero, 0, ProxyCaller?.OrigAddress ?? codePtr, IntPtr.Zero, 0, IntPtr.Zero);
-            WaitForSingleObject(thread, 10000);
+            WaitForSingleObject(thread, 2000);
             var buf = new Byte[target32Bit ? 4u : 8u];
             ReadProcessMemory(procHandle, retVal, buf, buf.Length, out _);
             VirtualFreeEx(procHandle, retVal, 0, 0x8000);

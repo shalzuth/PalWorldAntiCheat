@@ -1,16 +1,8 @@
-﻿using SDK.Script.CoreUObjectSDK;
-using SDK.Script.PalSDK;
-using System;
+﻿using MinHook;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 using static UnrealSharp.Memory;
-using static UnrealSharp.UnrealEngine;
 
 namespace UnrealSharp
 {
@@ -27,6 +19,8 @@ namespace UnrealSharp
         public static nint GEngine;
         public static nint GStaticCtor;
         public static nint ReceivedRPC;
+        public static GetPlayerNetworkAddressDelegate GetPlayerNetworkAddress;
+        public delegate nint GetPlayerNetworkAddressDelegate(nint PlayerController, nint result);
         public static Memory Memory;
         //public static nint FStringCtor;
         //public static nint FTextCtor;
@@ -75,6 +69,8 @@ namespace UnrealSharp
             }
             {
                 ReceivedRPC = Memory.FindPattern("48 8B 47 50 48 8D 4D 88 48 89 45 90 48 89 7D 88 44 89 65 98 66 C7 45");
+                var GetPlayerNetworkAddressAddr = Memory.FindPattern("48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC 20 48 8B B1 ? ? ? ? 48 8B DA 48 8B F9 48 85 F6 0F 84");
+                GetPlayerNetworkAddress = Marshal.GetDelegateForFunctionPointer<GetPlayerNetworkAddressDelegate>(GetPlayerNetworkAddressAddr);
             }
             //DumpSdk();
         }
@@ -1244,27 +1240,54 @@ namespace UnrealSharp
         }
         public unsafe delegate void pe(nint Class, nint Function, nint Parms);
         static Dictionary<nint, nint> origProcessEvents = new Dictionary<nint, nint> { };
+        public static ProcessEventDelegate OrigProcessEvent;
         public unsafe static void Hook(nint Class, nint Function, nint Parms)
         {
+            ProcessEventContinueHook?.Invoke(Class, Function, Parms);
+            /*
             // cache the funcaddr to name...
             var obj = new UEObject((nint)Class);
-            var funcName = obj.GetFuncName(obj.ClassAddr, obj.ClassAddr, Function);
-            if (ProcessEventContinueHook?.Invoke(obj, funcName, Parms) == true)
-                return;
-            var doActor = Marshal.GetDelegateForFunctionPointer<pe>(origProcessEvents[(nint)Class]);
-            doActor(Class, Function, Parms);
+            var funcName = "";
+            try
+            {
+                funcName = obj.GetFuncName(obj.ClassAddr, obj.ClassAddr, Function);
+                if (ProcessEventContinueHook?.Invoke(obj, funcName, Parms) == true)
+                    return;
+            }
+            catch (Exception e)
+            {
+                try
+                {
+                    Console.WriteLine("finding func name failed for " + obj.ClassName + " @ " + Function.ToString("X") + " : " + (*(nint*)Function).ToString("X"));
+                }
+                catch (Exception e2)
+                {
+                    Console.WriteLine("unk err : " + e2.Message + " : " + Class.ToString("X") + " : " + Function.ToString("X"));
+                }
+            }
+            //var doActor = Marshal.GetDelegateForFunctionPointer<pe>(origProcessEvents[(nint)Class]);
+            //doActor(Class, Function, Parms);
+            OrigProcessEvent(Class, Function, Parms);
+            {
+            }*/
         }
-        public static Func<UEObject, string, nint, bool> ProcessEventContinueHook;
+        public static Action<nint, nint, nint> ProcessEventContinueHook;
         [DllImport("kernel32")] static extern IntPtr OpenThread(uint dwDesiredAccess, bool bInheritHandle, int dwThreadId);
         [DllImport("kernel32")] static extern uint SuspendThread(IntPtr hThread);
         [DllImport("kernel32")] static extern uint ResumeThread(IntPtr hThread);
         [DllImport("kernel32")] static extern uint GetCurrentThreadId();
+        static HookEngine hooker = new HookEngine();
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall, CharSet = CharSet.Unicode)] public delegate void ProcessEventDelegate(nint Class, nint Function, nint Parms);
         public unsafe void HookProcessEvent()
         {
             PreserveVTable();
-            delegate*<nint, nint, nint, void> hookPtr = &Hook;
+
+            OrigProcessEvent = hooker.CreateHook(_vTableOverride[vTableFuncNum], new ProcessEventDelegate(Hook));
+            hooker.EnableHooks();
+            /*delegate*<nint, nint, nint, void> hookPtr = &Hook;
             origProcessEvents[Address] = _vTableOverride[vTableFuncNum];
-            _vTableOverride[vTableFuncNum] = (nint)hookPtr;
+            _vTableOverride[_vTableOverride[vTableFuncNum]] = (nint)hookPtr;
             var threads = Process.GetCurrentProcess().Threads;
             var suspendedThreads = new List<IntPtr> { };
             var currentThread = GetCurrentThreadId();
@@ -1277,7 +1300,8 @@ namespace UnrealSharp
                 SuspendThread(pOpenThread);
             }
             *(nint*)Address = (nint)_vTableOverride;
-            foreach (var t in suspendedThreads) ResumeThread(t);
+            foreach (var t in suspendedThreads) ResumeThread(t);*/
+
         }
         public T As<T>() where T : UEObject
         {
